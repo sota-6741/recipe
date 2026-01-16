@@ -1,6 +1,7 @@
 package auth0
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -8,6 +9,8 @@ import (
 	jwtmiddleware "github.com/auth0/go-jwt-middleware"
 	"github.com/form3tech-oss/jwt-go"
 )
+
+type JWTKey struct{}
 
 func NewMiddleware(domain, clientID string, jwks *JWKS) (*jwtmiddleware.JWTMiddleware, error) {
 	return jwtmiddleware.New(jwtmiddleware.Options{
@@ -34,7 +37,7 @@ func newValidationKeyGetter(domain, clientID string, jwks *JWKS) func(*jwt.Token
 
 		iss := fmt.Sprintf("https://%s/", domain)
 		ok = token.Claims.(jwt.MapClaims).VerifyIssuer(iss, true)
-		if !checkIss {
+		if !ok {
 			return nil, errors.New("invalid issuer")
 		}
 
@@ -61,4 +64,12 @@ func getPemCert(jwks *JWKS, token *jwt.Token) (string, error) {
 	}
 
 	return cert, nil
+}
+
+func GetJWT(ctx context.Context) *jwt.Token {
+	rawJWT, ok := ctx.Value(JWTKey{}).(*jwt.Token)
+	if !ok {
+		return nil
+	}
+	return rawJWT
 }
