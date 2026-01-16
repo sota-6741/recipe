@@ -9,16 +9,36 @@ import (
 	"recipe/api/internal/controller/system"
 	"recipe/api/internal/controller/user"
 	"recipe/api/internal/middleware"
+	"recipe/api/internal/middleware/auth0"
 
 	"github.com/gin-gonic/gin"
 )
 
-const latest = "/v1"
+const (
+	latest        = "/v1"
+	Auth0Domain   = "dev-cx-3942s.us.auth0.com"
+	Auth0ClientID = "YOUR_CLIENT_ID"
+)
 
 type Server struct{}
 
 func (s *Server) Run(ctx context.Context) error {
+	// Auth0初期化
+	jwks, err := auth0.FetchJWKS(Auth0Domain)
+	if err != nil {
+		return err
+	}
+
+	jwtMiddleware, err := auth0.NewMiddleware(Auth0Domain, Auth0ClientID, jwks)
+	if err != nil {
+		return err
+	}
+
 	r := gin.Default()
+
+	// CORS設定（フロントエンドからのアクセス許可）
+	r.Use(middleware.CORS())
+
 	v1 := r.Group(latest)
 
 	// 死活監視用
@@ -36,7 +56,8 @@ func (s *Server) Run(ctx context.Context) error {
 	}
 
 	authRequired := v1.Group("")
-	authRequired.Use(middleware.Auth())
+	// JWT認証Middlewareを適用
+	authRequired.Use(middleware.NewAuth(jwtMiddleware))
 
 	// user
 	{
