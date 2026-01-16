@@ -84,3 +84,17 @@ func GetClaims(ctx context.Context) jwt.MapClaims {
 	}
 	return claims
 }
+
+// GetUserID はコンテキストからユーザーID（sub）を取得する
+// 認証済みリクエストでユーザーを識別するために使用
+func GetUserID(ctx context.Context) string {
+	claims := GetClaims(ctx)
+	if claims == nil {
+		return ""
+	}
+	sub, ok := claims["sub"].(string)
+	if !ok {
+		return ""
+	}
+	return sub
+}
