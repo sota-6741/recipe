@@ -29,11 +29,6 @@ func (s *Server) Run(ctx context.Context) error {
 		return err
 	}
 
-	jwtMiddleware, err := auth0.NewMiddleware(Auth0Domain, Auth0ClientID, jwks)
-	if err != nil {
-		return err
-	}
-
 	r := gin.Default()
 
 	// CORS設定（フロントエンドからのアクセス許可）
@@ -57,7 +52,7 @@ func (s *Server) Run(ctx context.Context) error {
 
 	authRequired := v1.Group("")
 	// JWT認証Middlewareを適用
-	authRequired.Use(middleware.NewAuth(jwtMiddleware))
+	authRequired.Use(middleware.NewAuth(jwks, Auth0Domain, Auth0ClientID))
 
 	// user
 	{

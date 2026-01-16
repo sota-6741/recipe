@@ -4,50 +4,60 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/http"
 
-	jwtmiddleware "github.com/auth0/go-jwt-middleware"
 	"github.com/form3tech-oss/jwt-go"
 )
 
 type JWTKey struct{}
 
-func NewMiddleware(domain, clientID string, jwks *JWKS) (*jwtmiddleware.JWTMiddleware, error) {
-	return jwtmiddleware.New(jwtmiddleware.Options{
-		ValidationKeyGetter: newValidationKeyGetter(domain, clientID, jwks),
-		SigningMethod:       jwt.SigningMethodRS256,
-		ErrorHandler:        func(w http.ResponseWriter, r *http.Request, err string) {},
-	}), nil
-}
-
-func newValidationKeyGetter(domain, clientID string, jwks *JWKS) func(*jwt.Token) (interface{}, error) {
-	return func(token *jwt.Token) (interface{}, error) {
-		claims, ok := token.Claims.(jwt.MapClaims)
-		if !ok {
-			return token, errors.New("invalid claims type")
+// VerifyToken はJWTトークンを検証してクレームを返す
+func VerifyToken(tokenString string, jwks *JWKS, domain, clientID string) (jwt.MapClaims, error) {
+	token, err := jwt.ParseWithClaims(tokenString, jwt.MapClaims{}, func(token *jwt.Token) (interface{}, error) {
+		// 署名方式の確認
+		if token.Method != jwt.SigningMethodRS256 {
+			return nil, errors.New("invalid signing method")
 		}
 
-		azp, ok := claims["azp"].(string)
-		if !ok {
-			return nil, errors.New("authorized parties are required")
-		}
-		if azp != clientID {
-			return nil, errors.New("invalid authorized parties")
-		}
-
-		iss := fmt.Sprintf("https://%s/", domain)
-		ok = token.Claims.(jwt.MapClaims).VerifyIssuer(iss, true)
-		if !ok {
-			return nil, errors.New("invalid issuer")
-		}
-
+		// PEM証明書を取得
 		cert, err := getPemCert(jwks, token)
 		if err != nil {
 			return nil, err
 		}
 
+		// RSA公開鍵をパース
 		return jwt.ParseRSAPublicKeyFromPEM([]byte(cert))
+	})
+
+	if err != nil {
+		return nil, fmt.Errorf("token parsing failed: %w", err)
 	}
+
+	if !token.Valid {
+		return nil, errors.New("invalid token")
+	}
+
+	claims, ok := token.Claims.(jwt.MapClaims)
+	if !ok {
+		return nil, errors.New("invalid claims type")
+	}
+
+	// Authorize Party (azp) の検証
+	azp, ok := claims["azp"].(string)
+	if !ok {
+		return nil, errors.New("authorized parties are required")
+	}
+	if azp != clientID {
+		return nil, errors.New("invalid authorized parties")
+	}
+
+	// Issuer (iss) の検証
+	iss := fmt.Sprintf("https://%s/", domain)
+	ok = claims.VerifyIssuer(iss, true)
+	if !ok {
+		return nil, errors.New("invalid issuer")
+	}
+
+	return claims, nil
 }
 
 func getPemCert(jwks *JWKS, token *jwt.Token) (string, error) {
@@ -66,10 +76,11 @@ func getPemCert(jwks *JWKS, token *jwt.Token) (string, error) {
 	return cert, nil
 }
 
-func GetJWT(ctx context.Context) *jwt.Token {
-	rawJWT, ok := ctx.Value(JWTKey{}).(*jwt.Token)
+// GetClaims はコンテキストからJWTクレームを取得する
+func GetClaims(ctx context.Context) jwt.MapClaims {
+	claims, ok := ctx.Value(JWTKey{}).(jwt.MapClaims)
 	if !ok {
 		return nil
 	}
-	return rawJWT
+	return claims
 }
